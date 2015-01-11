@@ -1,6 +1,6 @@
 {
   "name": "viewerjs",
-  "main": "viewer.js",
+  "main": "ViewerJS/viewer.js",
   "description": "Document viewer component for PDF and ODF documents. Done with just HTML, CSS, and JavaScript. Powered by pdf.js and WebODF.",
   "license": "AGPL-3.0",
   "keywords": [
@@ -10,5 +10,6 @@
     "ODP", "OTP", "FODP",
     "Viewer"
   ],
-  "homepage": "http://viewerjs.org/"
+  "homepage": "http://viewerjs.org/",
+  "ignore": []
 }
