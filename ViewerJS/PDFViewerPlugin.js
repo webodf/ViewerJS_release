@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright (C) 2013-2014 KO GmbH <copyright@kogmbh.com>
+ * Copyright (C) 2013-2015 KO GmbH <copyright@kogmbh.com>
  *
  * @licstart
  * The JavaScript code in this page is free software: you can redistribute it
@@ -52,12 +52,10 @@ function PDFViewerPlugin() {
     }
 
     function init(callback) {
-        var pdfLib, textLayerLib, pluginCSS;
+        var pluginCSS;
 
         loadScript('./compatibility.js', function () {
             loadScript('./pdf.js');
-            loadScript('./pdf_find_bar.js');
-            loadScript('./pdf_find_controller.js');
             loadScript('./ui_utils.js');
             loadScript('./text_layer_builder.js');
             loadScript('./pdfjsversion.js', callback);
@@ -80,9 +78,7 @@ function PDFViewerPlugin() {
             RUNNING: 1,
             FINISHED: 2
         },
-        startedTextExtraction = false,
         container = null,
-        initialized = false,
         pdfDocument = null,
         pageViewScroll = null,
         isPresentationMode = false,
@@ -111,16 +107,16 @@ function PDFViewerPlugin() {
     }
 
     function getDomPage(page) {
-        return domPages[page.pageInfo.pageIndex];
+        return domPages[page.pageIndex];
     }
     function getPageText(page) {
-        return pageText[page.pageInfo.pageIndex];
+        return pageText[page.pageIndex];
     }
     function getRenderingStatus(page) {
-        return renderingStates[page.pageInfo.pageIndex];
+        return renderingStates[page.pageIndex];
     }
     function setRenderingStatus(page, renderStatus) {
-        renderingStates[page.pageInfo.pageIndex] = renderStatus;
+        renderingStates[page.pageIndex] = renderStatus;
     }
 
     function updatePageDimensions(page, width, height) {
@@ -162,6 +158,15 @@ function PDFViewerPlugin() {
         }
     }
 
+    function completeLoading() {
+        domPages.forEach(function (domPage) {
+            container.appendChild(domPage);
+        });
+
+        self.showPage(1);
+        self.onLoad();
+    }
+
     function createPage(page) {
         var pageNumber,
             textLayerDiv,
@@ -170,13 +175,16 @@ function PDFViewerPlugin() {
             domPage,
             viewport;
 
-        pageNumber = page.pageInfo.pageIndex + 1;
+        pageNumber = page.pageIndex + 1;
 
         viewport = page.getViewport(scale);
 
         domPage = document.createElement('div');
         domPage.id = 'pageContainer' + pageNumber;
         domPage.className = 'page';
+        if (self.isSlideshow()) {
+            domPage.style.display = "none";
+        }
 
         canvas = document.createElement('canvas');
         canvas.id = 'canvas' + pageNumber;
@@ -185,13 +193,12 @@ function PDFViewerPlugin() {
         textLayerDiv.className = 'textLayer';
         textLayerDiv.id = 'textLayer' + pageNumber;
 
-        container.appendChild(domPage);
         domPage.appendChild(canvas);
         domPage.appendChild(textLayerDiv);
 
-        pages.push(page);
-        domPages.push(domPage);
-        renderingStates.push(RENDERING.BLANK);
+        pages[page.pageIndex] = page;
+        domPages[page.pageIndex] = domPage;
+        renderingStates[page.pageIndex] = RENDERING.BLANK;
 
         updatePageDimensions(page, viewport.width, viewport.height);
         pageWidth = viewport.width;
@@ -199,22 +206,17 @@ function PDFViewerPlugin() {
 
         textLayer = new TextLayerBuilder({
             textLayerDiv: textLayerDiv,
+            viewport: viewport,
             pageIndex: pageNumber - 1
         });
         page.getTextContent().then(function (textContent) {
             textLayer.setTextContent(textContent);
         });
-        pageText.push(textLayer);
+        pageText[page.pageIndex] = textLayer;
 
         createdPageCount += 1;
         if (createdPageCount === (pdfDocument.numPages)) {
-            if (self.isSlideshow()) {
-                domPages.forEach(function (pageElement) {
-                    pageElement.style.display = "none";
-                });
-                self.showPage(1);
-            }
-            self.onLoad();
+            completeLoading();
         }
     }
 
@@ -222,6 +224,7 @@ function PDFViewerPlugin() {
         var self = this,
             i,
             pluginCSS;
+
 
         init(function () {
             PDFJS.workerSrc = "./pdf.worker.js";
@@ -232,8 +235,6 @@ function PDFViewerPlugin() {
                 for (i = 0; i < pdfDocument.numPages; i += 1) {
                     pdfDocument.getPage(i + 1).then(createPage);
                 }
-
-                initialized = true;
             });
         });
     };
