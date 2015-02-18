@@ -1,8 +1,9 @@
 ## ViewerJS
 
-ViewerJS combines a number of excellent open source tools that are built on HTML and javascript. ViewerJS was funded by [NLnet foundation](http://nlnet.nl) and developed by [KO GmbH](http://kogmbh.com).
+ViewerJS combines a number of excellent open source tools that are built on HTML and javascript. ViewerJS was funded initially by [NLnet foundation](http://nlnet.nl) and is developed by [KO GmbH](http://kogmbh.com).
 
-Visit the project homepage at http://viewerjs.org
+* Visit the project homepage at: [ViewerJS](http://viewerjs.org/)
+* Want some live demos? Visit: [ViewerJS Examples](http://viewerjs.org/examples/)
 
 The heavy lifting in ViewerJS is done by these awesome projects:
 
@@ -29,8 +30,8 @@ This repository is explicitely done for dependency managers and package managers
 It only contains the files of builds created from released versions of ViewerJS, so
 they can be directly deployed by those managers.
 
-At the moment this repository supports
-* [Bower](http://bower.io/)
+Currently supported by this repository:
+* [Bower](http://bower.io/), registered in the central Bower registry by: "viewerjs"
 
 We are looking forward to support other managers as well, help welcome.
 
