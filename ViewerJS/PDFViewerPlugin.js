@@ -76,16 +76,18 @@ function PDFViewerPlugin() {
         RENDERING = {
             BLANK: 0,
             RUNNING: 1,
-            FINISHED: 2
+            FINISHED: 2,
+            RUNNINGOUTDATED: 3
         },
         container = null,
         pdfDocument = null,
         pageViewScroll = null,
+        isGuessedSlideshow = true, // assume true as default, any non-matching page will unset this
         isPresentationMode = false,
         scale = 1,
         currentPage = 1,
-        pageWidth,
-        pageHeight,
+        maxPageWidth = 0,
+        maxPageHeight = 0,
         createdPageCount = 0;
 
     function scrollIntoView(elem) {
@@ -93,6 +95,10 @@ function PDFViewerPlugin() {
     }
 
     function isScrolledIntoView(elem) {
+        if (elem.style.display === "none") {
+            return false;
+        }
+
         var docViewTop = container.scrollTop,
             docViewBottom = docViewTop + container.clientHeight,
             elemTop = elem.offsetTop,
@@ -137,29 +143,47 @@ function PDFViewerPlugin() {
         CustomStyle.setProp('transform', textLayer, cssScale);
         CustomStyle.setProp('transformOrigin', textLayer, '0% 0%');
 
-        // Once the page dimension is updated, the rendering state is blank.
-        setRenderingStatus(page, RENDERING.BLANK);
+        if (getRenderingStatus(page) === RENDERING.RUNNING) {
+            // TODO: should be able to cancel that rendering
+            setRenderingStatus(page, RENDERING.RUNNINGOUTDATED);
+        } else {
+            // Once the page dimension is updated, the rendering state is blank.
+            setRenderingStatus(page, RENDERING.BLANK);
+        }
     }
 
-    function renderPage(page) {
-        var domPage = getDomPage(page),
-            textLayer = getPageText(page),
-            canvas = domPage.getElementsByTagName('canvas')[0];
+    function ensurePageRendered(page) {
+        var domPage, textLayer, canvas;
 
         if (getRenderingStatus(page) === RENDERING.BLANK) {
             setRenderingStatus(page, RENDERING.RUNNING);
+
+            domPage = getDomPage(page);
+            textLayer = getPageText(page);
+            canvas = domPage.getElementsByTagName('canvas')[0];
+
             page.render({
                 canvasContext: canvas.getContext('2d'),
                 textLayer: textLayer,
                 viewport: page.getViewport(scale)
             }).promise.then(function () {
-                setRenderingStatus(page, RENDERING.FINISHED);
+                if (getRenderingStatus(page) === RENDERING.RUNNINGOUTDATED) {
+                    // restart
+                    setRenderingStatus(page, RENDERING.BLANK);
+                    ensurePageRendered(page);
+                } else {
+                    setRenderingStatus(page, RENDERING.FINISHED);
+                }
             });
         }
     }
 
     function completeLoading() {
+        var allPagesVisible = !self.isSlideshow();
         domPages.forEach(function (domPage) {
+            if (allPagesVisible) {
+                domPage.style.display = "block";
+            }
             container.appendChild(domPage);
         });
 
@@ -182,9 +206,7 @@ function PDFViewerPlugin() {
         domPage = document.createElement('div');
         domPage.id = 'pageContainer' + pageNumber;
         domPage.className = 'page';
-        if (self.isSlideshow()) {
-            domPage.style.display = "none";
-        }
+        domPage.style.display = "none";
 
         canvas = document.createElement('canvas');
         canvas.id = 'canvas' + pageNumber;
@@ -201,8 +223,16 @@ function PDFViewerPlugin() {
         renderingStates[page.pageIndex] = RENDERING.BLANK;
 
         updatePageDimensions(page, viewport.width, viewport.height);
-        pageWidth = viewport.width;
-        pageHeight = viewport.height;
+        if (maxPageWidth < viewport.width) {
+            maxPageWidth = viewport.width;
+        }
+        if (maxPageHeight < viewport.height) {
+            maxPageHeight = viewport.height;
+        }
+        // A very simple but generally true guess - if any page has the height greater than the width, treat it no longer as a slideshow
+        if (viewport.width < viewport.height) {
+            isGuessedSlideshow = false;
+        }
 
         textLayer = new TextLayerBuilder({
             textLayerDiv: textLayerDiv,
@@ -240,8 +270,7 @@ function PDFViewerPlugin() {
     };
 
     this.isSlideshow = function () {
-        // A very simple but generally true guess - if the width is greater than the height, treat it as a slideshow
-        return pageWidth > pageHeight;
+        return isGuessedSlideshow;
     };
 
     this.onLoad = function () {};
@@ -250,59 +279,52 @@ function PDFViewerPlugin() {
         return domPages;
     };
 
-    this.getWidth = function () {
-        return pageWidth;
-    };
-
-    this.getHeight = function () {
-        return pageHeight;
-    };
-
     this.fitToWidth = function (width) {
         var zoomLevel;
 
-        if (self.getWidth() === width) {
+        if (maxPageWidth === width) {
             return;
         }
-        zoomLevel = width / pageWidth;
+        zoomLevel = width / maxPageWidth;
         self.setZoomLevel(zoomLevel);
     };
 
     this.fitToHeight = function (height) {
         var zoomLevel;
 
-        if (self.getHeight() === height) {
+        if (maxPageHeight === height) {
             return;
         }
-        zoomLevel = height / pageHeight;
+        zoomLevel = height / maxPageHeight;
         self.setZoomLevel(zoomLevel);
     };
 
     this.fitToPage = function (width, height) {
-        var zoomLevel = width / pageWidth;
-        if (height / pageHeight < zoomLevel) {
-            zoomLevel = height / pageHeight;
+        var zoomLevel = width / maxPageWidth;
+        if (height / maxPageHeight < zoomLevel) {
+            zoomLevel = height / maxPageHeight;
         }
         self.setZoomLevel(zoomLevel);
     };
 
     this.fitSmart = function (width, height) {
-        var zoomLevel = width / pageWidth;
-        if (height && (height / pageHeight) < zoomLevel) {
-            zoomLevel = height / pageHeight;
+        var zoomLevel = width / maxPageWidth;
+        if (height && (height / maxPageHeight) < zoomLevel) {
+            zoomLevel = height / maxPageHeight;
         }
         zoomLevel = Math.min(1.0, zoomLevel);
         self.setZoomLevel(zoomLevel);
     };
 
     this.setZoomLevel = function (zoomLevel) {
-        var i;
+        var i, viewport;
 
         if (scale !== zoomLevel) {
             scale = zoomLevel;
 
             for (i = 0; i < pages.length; i += 1) {
-                updatePageDimensions(pages[i], pageWidth * scale, pageHeight * scale);
+                viewport = pages[i].getViewport(scale);
+                updatePageDimensions(pages[i], viewport.width, viewport.height);
             }
         }
     };
@@ -316,9 +338,7 @@ function PDFViewerPlugin() {
 
         for (i = 0; i < domPages.length; i += 1) {
             if (isScrolledIntoView(domPages[i])) {
-                if (getRenderingStatus(pages[i]) === RENDERING.BLANK) {
-                    renderPage(pages[i]);
-                }
+                ensurePageRendered(pages[i]);
             }
         }
     };
@@ -341,6 +361,7 @@ function PDFViewerPlugin() {
         if (self.isSlideshow()) {
             domPages[currentPage - 1].style.display = "none";
             currentPage = n;
+            ensurePageRendered(pages[n - 1]);
             domPages[n - 1].style.display = "block";
         } else {
             scrollIntoView(domPages[n - 1]);
